@@ -48,7 +48,7 @@ namespace rtsp {
         Service &operator =(const Service& orig) = delete;
         ~Service();
 
-        void store( cv::Mat &frame, int delay )
+        void store( cv::Mat frame, int delay )
         {
             m_poll.store( frame, delay );
         }

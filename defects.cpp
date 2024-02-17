@@ -29,8 +29,9 @@ namespace {
         "  monochrome",
         "  overexposed",
         "  shadowed",
-        "  low choma",
+        "  low chroma",
         "  atvl",
+        "  posterize"
     };
 }  // namespace
 
@@ -68,7 +69,17 @@ void Defects::run( Reader &r )
         }
         uint64_t ts = now();
 
-        cv::Mat fr = frame.clone();//defects::posterize( frame ).clone();
+        srv->store( f_grayscale(
+                        f_moveLuma(
+                            f_moveChroma(
+                                f_atvl(
+                                    f_posterize( frame )
+                                )
+                            )
+                        )
+                    ).clone(),
+                    delta
+                  );
 
         for( size_t i(0); i < kTestNumber; ++i )
         {
@@ -83,8 +94,11 @@ void Defects::run( Reader &r )
                          false );
         }
 
-        cv::imshow( m_name.c_str(), f_lumaHistogram( frame ) );
-        srv->store( fr, delta );
+        cv::imshow( m_name.c_str(),
+                    f_lumaHistogram(
+                        f_chromaHistogram( frame )
+                    )
+                  );
 
         int passed = 0;
         do {
@@ -105,7 +119,39 @@ void Defects::f_manage_keycode( int code )
 {
     m_tests[m_highlighted].second = false;
 
-    if( code == 0x54 ) { //down
+    if( code == 'y' ) { // Luma histogram
+        if( (m_test_flags & Tests::Y_Histogram) ) {
+            m_test_flags &= ~Tests::Y_Histogram;
+        }
+        else {
+            m_test_flags |= Tests::Y_Histogram;
+        }
+    }
+    if( code == 'r' ) { // Red histogram
+        if( (m_test_flags & Tests::R_Histogram) ) {
+            m_test_flags &= ~Tests::R_Histogram;
+        }
+        else {
+            m_test_flags |= Tests::R_Histogram;
+        }
+    }
+    if( code == 'g' ) { // Green histogram
+        if( (m_test_flags & Tests::G_Histogram) ) {
+            m_test_flags &= ~Tests::G_Histogram;
+        }
+        else {
+            m_test_flags |= Tests::G_Histogram;
+        }
+    }
+    if( code == 'b' ) { // Blue histogram
+        if( (m_test_flags & Tests::B_Histogram) ) {
+            m_test_flags &= ~Tests::B_Histogram;
+        }
+        else {
+            m_test_flags |= Tests::B_Histogram;
+        }
+    }
+    else if( code == 0x54 ) { //down
         if( ++m_highlighted == kTestNumber )
         {
             m_highlighted = 0;
@@ -156,23 +202,25 @@ cv::Mat &Defects::f_blur( cv::Mat &src, cv::Size core_size )
 
 cv::Mat &Defects::f_posterize( cv::Mat &src, int div )
 {
-    for( size_t y(0); y < src.rows; ++y )
+    if( (m_test_flags & Tests::Posterize) )
     {
-        uchar *b = src.ptr( y );
-        uchar *g = b + 1;
-        uchar *r = g + 1;
-        for( size_t x(0); x < src.cols; ++x )
+        for( size_t y(0); y < src.rows; ++y )
         {
-            // process each pixel
-            *b = *b / div * div;// + div / 2;
-            b += 3;
-            *g = *g / div * div;// + div / 2;
-            g += 3;
-            *r = *r / div * div;// + div / 2;
-            r += 3;
+            uchar *b = src.ptr( y );
+            uchar *g = b + 1;
+            uchar *r = g + 1;
+            for( size_t x(0); x < src.cols; ++x )
+            {
+                // process each pixel
+                *b = *b / div * div;// + div / 2;
+                b += 3;
+                *g = *g / div * div;// + div / 2;
+                g += 3;
+                *r = *r / div * div;// + div / 2;
+                r += 3;
+            }
         }
     }
-
     return src;
 }
 
@@ -197,160 +245,172 @@ cv::Mat &Defects::f_moveHSV( cv::Mat &src, double alpha, int beta )
     return src;
 }
 
-cv::Mat &Defects::f_moveLuma( cv::Mat &src, float alpha )
+cv::Mat &Defects::f_moveLuma( cv::Mat &src )
 {
-    cv::Mat yuv;
-    cv::cvtColor( src, yuv, CV_RGB2YUV_I420 );
+    if( (m_test_flags & Tests::Overexposed) || (m_test_flags & Tests::Shadowed) )
+    {
+        cv::Mat yuv;
+        cv::cvtColor( src, yuv, CV_RGB2YUV_I420 );
 
-    for( int y(0); y < src.rows; y++ ) {
-        for( int x(0); x < src.cols; x++ ) {
-            float luma = yuv.at< uchar >(y, x) * alpha;
-            if( luma > 255. ) {
-                luma = 255.;
+        for( int y(0); y < src.rows; y++ ) {
+            for( int x(0); x < src.cols; x++ ) {
+                float luma = yuv.at< uchar >(y, x) * m_alpha;
+                if( luma > 255. ) {
+                    luma = 255.;
+                }
+                yuv.at< uchar >(y, x) = cv::saturate_cast< uchar >(luma);
             }
-            yuv.at< uchar >(y, x) = cv::saturate_cast< uchar >(luma);
         }
+        cv::cvtColor( yuv, src, CV_YUV2RGB_I420 );
     }
-    cv::cvtColor( yuv, src, CV_YUV2RGB_I420 );
-
     return src;
 }
 
-cv::Mat &Defects::f_moveChroma( cv::Mat &src, float alpha )
+cv::Mat &Defects::f_moveChroma( cv::Mat &src )
 {
-    cv::Mat yuv;
-    cv::cvtColor( src, yuv, CV_RGB2YUV_I420 );
+    if( (m_test_flags & Tests::LowChroma) )
+    {
+        cv::Mat yuv;
+        cv::cvtColor( src, yuv, CV_RGB2YUV_I420 );
 
-    int chroma_height = src.rows >> 2;
-    for( int y(0); y < chroma_height; y++ ) {
-        for( int x(0); x < src.cols; x++ ) {
-            float u = yuv.at< uchar >(src.rows + y, x) * alpha;
-            if( u > 255. ) {
-                u = 255.;
+        int chroma_height = src.rows >> 2;
+        for( int y(0); y < chroma_height; y++ ) {
+            for( int x(0); x < src.cols; x++ ) {
+                float u = yuv.at< uchar >(src.rows + y, x) * m_alpha;
+                if( u > 255. ) {
+                    u = 255.;
+                }
+                yuv.at< uchar >(src.rows + y, x) = cv::saturate_cast< uchar >(u);
+
+                float v = yuv.at< uchar >(src.rows + chroma_height + y, x) * m_alpha;
+                if( v > 255. ) {
+                    v = 255.;
+                }
+                yuv.at< uchar >(src.rows + chroma_height + y, x) = cv::saturate_cast< uchar >(v);
+
             }
-            yuv.at< uchar >(src.rows + y, x) = cv::saturate_cast< uchar >(u);
-
-            float v = yuv.at< uchar >(src.rows + chroma_height + y, x) * alpha;
-            if( v > 255. ) {
-                v = 255.;
-            }
-            yuv.at< uchar >(src.rows + chroma_height + y, x) = cv::saturate_cast< uchar >(v);
-
         }
+        cv::cvtColor( yuv, src, CV_YUV2RGB_I420 );
     }
-    cv::cvtColor( yuv, src, CV_YUV2RGB_I420 );
-
     return src;
 }
 
-cv::Mat &Defects::f_atvl( cv::Mat &src, float alpha )
+cv::Mat &Defects::f_atvl( cv::Mat &src )
 {
-    cv::Mat yuv;
-    cv::cvtColor( src, yuv, CV_RGB2YUV_I420 );
+    if( (m_test_flags & Tests::ATVL) )
+    {
+        cv::Mat yuv;
+        cv::cvtColor( src, yuv, CV_RGB2YUV_I420 );
 
-    for( int y(0); y < src.rows; y++ ) {
-        for( int x(0); x < src.cols; x++ ) {
-            float luma = yuv.at< uchar >(y, x) * alpha;
-            if( luma < 80. ) {
-                luma = luma / alpha;
+        for( int y(0); y < src.rows; y++ ) {
+            for( int x(0); x < src.cols; x++ ) {
+                float luma = yuv.at< uchar >(y, x);
+                if( luma < 80. ) {
+                    luma = luma / m_alpha;
+                }
+                if( luma > 80. ) {
+                    luma = luma * m_alpha;
+                }
+                if( luma > 255. ) {
+                    luma = 255.;
+                }
+                yuv.at< uchar >(y, x) = cv::saturate_cast< uchar >(luma);
             }
-            if( luma > 80. ) {
-                luma = luma * alpha;
-            }
-            if( luma > 255. ) {
-                luma = 255.;
-            }
-            yuv.at< uchar >(y, x) = cv::saturate_cast< uchar >(luma);
         }
+        cv::cvtColor( yuv, src, CV_YUV2RGB_I420 );
     }
-    cv::cvtColor( yuv, src, CV_YUV2RGB_I420 );
-
     return src;
 }
 
 cv::Mat &Defects::f_lumaHistogram( cv::Mat &src )
 {
-    cv::Mat yuv;
-    cv::cvtColor( src, yuv, CV_RGB2YUV_I420 );
-
-    int h_size = 256;
-    float range[] = { 0, float(h_size) } ;
-    const float* h_range = { range };
-
-    cv::Mat hist;
-    calcHist( &yuv, 1, 0, cv::Mat(), hist, 1, &h_size, &h_range, true, false );
-
-    cv::Size bg_size( 256, 128 );
-    cv::Mat bg( bg_size.height, bg_size.width, CV_8UC3, cv::Scalar(0 ,0, 0 ) );
-    cv::normalize(hist, hist, 0, bg.rows, cv::NORM_MINMAX, -1, cv::Mat() );
-
-    for( size_t i(1); i < hist.rows; ++i )
+    if( (m_test_flags & Tests::Y_Histogram) )
     {
-        cv::line( bg,
-                  cv::Point( (i - 1), bg.rows - cvRound( hist.at< float>(i - 1) ) ),
-                  cv::Point( i, bg.rows - cvRound( hist.at< float >(i) ) ),
-                  cv::Scalar( 255, 255, 255) );
-    }
-    cv::Mat roi1( src, cv::Rect( 0, src.rows - bg_size.height, bg_size.width, bg_size.height ) );
-    cv::addWeighted( roi1, 0.35, bg, 0.65, 0.0, roi1 );
+        cv::Mat yuv;
+        cv::cvtColor( src, yuv, CV_RGB2YUV_I420 );
 
+        int h_size = 256;
+        float range[] = { 0, float(h_size) } ;
+        const float* h_range = { range };
+
+        cv::Mat hist;
+        calcHist( &yuv, 1, 0, cv::Mat(), hist, 1, &h_size, &h_range, true, false );
+
+        cv::Size bg_size( 256, 128 );
+        cv::Mat bg( bg_size.height, bg_size.width, CV_8UC3, cv::Scalar(0 ,0, 0 ) );
+        cv::normalize(hist, hist, 0, bg.rows, cv::NORM_MINMAX, -1, cv::Mat() );
+
+        for( size_t i(1); i < hist.rows; ++i )
+        {
+            cv::line( bg,
+                      cv::Point( (i - 1), bg.rows - cvRound( hist.at< float>(i - 1) ) ),
+                      cv::Point( i, bg.rows - cvRound( hist.at< float >(i) ) ),
+                      cv::Scalar( 255, 255, 255) );
+        }
+        cv::Mat roi1( src, cv::Rect( 0, src.rows - bg_size.height, bg_size.width, bg_size.height ) );
+        cv::addWeighted( roi1, 0.35, bg, 0.65, 0.0, roi1 );
+    }
     return src;
 }
-cv::Mat &Defects::f_chromaHistogram( cv::Mat &src, uint32_t colors )
+cv::Mat &Defects::f_chromaHistogram( cv::Mat &src )
 {
-    std::vector< cv::Mat > planes;
-    cv::split( src, planes );
-
-    int h_size = 256;
-    float range[] = { 0, float(h_size) } ;
-    const float* h_range = { range };
-
-    cv::Mat hist[3];
-    calcHist( &planes[0], 1, 0, cv::Mat(), hist[0], 1, &h_size, &h_range, true, false );
-    calcHist( &planes[1], 1, 0, cv::Mat(), hist[1], 1, &h_size, &h_range, true, false );
-    calcHist( &planes[2], 1, 0, cv::Mat(), hist[2], 1, &h_size, &h_range, true, false );
-
-    cv::Size bg_size( 256, 128 );
-    cv::Mat bg( bg_size.height, bg_size.width, CV_8UC3, cv::Scalar(0 ,0, 0 ) );
-
-    cv::normalize(hist[0], hist[0], 0, bg.rows, cv::NORM_MINMAX, -1, cv::Mat() );
-    cv::normalize(hist[1], hist[1], 0, bg.rows, cv::NORM_MINMAX, -1, cv::Mat() );
-    cv::normalize(hist[2], hist[2], 0, bg.rows, cv::NORM_MINMAX, -1, cv::Mat() );
-
-    for( int i(1); i < h_size; ++i )
+    if( (m_test_flags & Tests::R_Histogram) || (m_test_flags & Tests::G_Histogram) || (m_test_flags & Tests::B_Histogram))
     {
-        if( colors & BLUE ) {
-            line( bg,
-                  cv::Point( (i - 1), bg.rows - cvRound(hist[0].at< float >(i - 1)) ),
-                  cv::Point( i, bg.rows - cvRound(hist[0].at< float >(i)) ),
-                  cv::Scalar( 255, 0, 0) );
-        }
-        if( colors & GREEN ) {
-            line( bg,
-                  cv::Point( (i - 1), bg.rows - cvRound(hist[1].at< float >(i - 1)) ),
-                  cv::Point( i, bg.rows - cvRound(hist[1].at< float >(i)) ),
-                  cv::Scalar( 0, 255, 0) );
-        }
-        if( colors & RED ) {
-            line( bg,
-                  cv::Point( (i - 1), bg.rows - cvRound(hist[2].at< float >(i - 1)) ),
-                  cv::Point( i, bg.rows - cvRound(hist[2].at< float >(i)) ),
-                  cv::Scalar( 0, 0, 255) );
-        }
-    }
-    cv::Mat roi1( src, cv::Rect( 0, src.rows - bg_size.height, bg_size.width, bg_size.height ) );
-    cv::addWeighted( roi1, 0.35, bg, 0.65, 0.0, roi1 );
+        std::vector< cv::Mat > planes;
+        cv::split( src, planes );
 
+        int h_size = 256;
+        float range[] = { 0, float(h_size) } ;
+        const float* h_range = { range };
+
+        cv::Mat hist[3];
+        calcHist( &planes[0], 1, 0, cv::Mat(), hist[0], 1, &h_size, &h_range, true, false );
+        calcHist( &planes[1], 1, 0, cv::Mat(), hist[1], 1, &h_size, &h_range, true, false );
+        calcHist( &planes[2], 1, 0, cv::Mat(), hist[2], 1, &h_size, &h_range, true, false );
+
+        cv::Size bg_size( 256, 128 );
+        cv::Mat bg( bg_size.height, bg_size.width, CV_8UC3, cv::Scalar(0 ,0, 0 ) );
+
+        cv::normalize(hist[0], hist[0], 0, bg.rows, cv::NORM_MINMAX, -1, cv::Mat() );
+        cv::normalize(hist[1], hist[1], 0, bg.rows, cv::NORM_MINMAX, -1, cv::Mat() );
+        cv::normalize(hist[2], hist[2], 0, bg.rows, cv::NORM_MINMAX, -1, cv::Mat() );
+
+        for( int i(1); i < h_size; ++i )
+        {
+            if( (m_test_flags & Tests::B_Histogram) ) {
+                line( bg,
+                      cv::Point( (i - 1), bg.rows - cvRound(hist[0].at< float >(i - 1)) ),
+                      cv::Point( i, bg.rows - cvRound(hist[0].at< float >(i)) ),
+                      cv::Scalar( 255, 0, 0) );
+            }
+            if( (m_test_flags & Tests::G_Histogram) ) {
+                line( bg,
+                      cv::Point( (i - 1), bg.rows - cvRound(hist[1].at< float >(i - 1)) ),
+                      cv::Point( i, bg.rows - cvRound(hist[1].at< float >(i)) ),
+                      cv::Scalar( 0, 255, 0) );
+            }
+            if( (m_test_flags & Tests::R_Histogram) ) {
+                line( bg,
+                      cv::Point( (i - 1), bg.rows - cvRound(hist[2].at< float >(i - 1)) ),
+                      cv::Point( i, bg.rows - cvRound(hist[2].at< float >(i)) ),
+                      cv::Scalar( 0, 0, 255) );
+            }
+        }
+        cv::Mat roi1( src, cv::Rect( 0, src.rows - bg_size.height, bg_size.width, bg_size.height ) );
+        cv::addWeighted( roi1, 0.35, bg, 0.65, 0.0, roi1 );
+    }
     return src;
 }
 
 cv::Mat &Defects::f_grayscale( cv::Mat &src )
 {
-    cv::Mat gray;
-    cv::cvtColor( src, gray, CV_RGB2GRAY );
+    if( (m_test_flags & Tests::Monochrome) )
+    {
+        cv::Mat gray;
+        cv::cvtColor( src, gray, CV_RGB2GRAY );
 
-    std::vector< cv::Mat > planes( 3, gray );
-    cv::merge( planes, src );
-
+        std::vector< cv::Mat > planes( 3, gray );
+        cv::merge( planes, src );
+    }
     return src;
 }
