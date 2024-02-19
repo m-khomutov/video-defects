@@ -44,14 +44,17 @@ Defects::Defects( char const *name )
     signal( SIGINT,  signal_handler);
 
     cv::namedWindow( name, cv::WINDOW_AUTOSIZE );
-    //int switch_value;
-    //cv::createTrackbar( "name", name, &switch_value, 10, nullptr );
 
     for( size_t i(0); i < Tests::Number; ++i )
     {
         m_test_info[i] = { test_names[i], (1u << i) };
     }
     m_test_info[0].highlighted = true;
+}
+
+Defects::~Defects()
+{
+    cv::destroyAllWindows();
 }
 
 void Defects::run( Reader &r )
@@ -123,6 +126,12 @@ void Defects::f_manage_keycode( int code )
         case 'y':  // Luma histogram
             f_on_y();
             break;
+        case 'u':  // Chroma U (Cb) histogram
+            f_on_u();
+            break;
+        case 'v':  // CHroma V (Cr) histogram
+            f_on_v();
+            break;
         case 'r':  // Red histogram
             f_on_r();
             break;
@@ -153,41 +162,41 @@ void Defects::f_manage_keycode( int code )
 
 void Defects::f_on_y()
 {
-    if( (m_test_flags & HistogramFlags::Y_Histogram) ) {
-        m_test_flags &= ~HistogramFlags::Y_Histogram;
-    }
-    else {
-        m_test_flags |= HistogramFlags::Y_Histogram;
-    }
+    f_manage_histogram( HistogramFlags::Y_Histogram );
+}
+
+void Defects::f_on_u()
+{
+    f_manage_histogram( HistogramFlags::U_Histogram );
+}
+
+void Defects::f_on_v()
+{
+    f_manage_histogram( HistogramFlags::V_Histogram );
 }
 
 void Defects::f_on_r()
 {
-    if( (m_test_flags & HistogramFlags::R_Histogram) ) {
-        m_test_flags &= ~HistogramFlags::R_Histogram;
-    }
-    else {
-        m_test_flags |= HistogramFlags::R_Histogram;
-    }
+    f_manage_histogram( HistogramFlags::R_Histogram );
 }
 
 void Defects::f_on_g()
 {
-    if( (m_test_flags & HistogramFlags::G_Histogram) ) {
-        m_test_flags &= ~HistogramFlags::G_Histogram;
-    }
-    else {
-        m_test_flags |= HistogramFlags::G_Histogram;
-    }
+    f_manage_histogram( HistogramFlags::G_Histogram );
 }
 
 void Defects::f_on_b()
 {
-    if( (m_test_flags & HistogramFlags::B_Histogram) ) {
-        m_test_flags &= ~HistogramFlags::B_Histogram;
+    f_manage_histogram( HistogramFlags::B_Histogram );
+}
+
+void Defects::f_manage_histogram( uint32_t flag )
+{
+    if( (m_test_flags & flag) ) {
+        m_test_flags &= ~flag;
     }
     else {
-        m_test_flags |= HistogramFlags::B_Histogram;
+        m_test_flags |= flag;
     }
 }
 
@@ -434,28 +443,52 @@ cv::Mat &Defects::f_grayscale( cv::Mat &src )
 
 cv::Mat &Defects::f_lumaHistogram( cv::Mat &src )
 {
-    if( (m_test_flags & HistogramFlags::Y_Histogram) )
+    if( (m_test_flags & HistogramFlags::Y_Histogram) || (m_test_flags & HistogramFlags::U_Histogram) || (m_test_flags & HistogramFlags::V_Histogram) )
     {
         cv::Mat yuv;
         cv::cvtColor( src, yuv, CV_RGB2YUV_I420 );
+        cv::Mat u( src.rows >> 2, src.cols, yuv.type(), yuv.data + src.rows * src.cols );
+        cv::Mat v( src.rows >> 2, src.cols, yuv.type(), yuv.data + (src.rows + (src.rows >> 2)) * src.cols );
 
         int h_size = 256;
         float range[] = { 0, float(h_size) } ;
         const float* h_range = { range };
 
-        cv::Mat hist;
-        calcHist( &yuv, 1, 0, cv::Mat(), hist, 1, &h_size, &h_range, true, false );
+        cv::Mat hist[3];
+        calcHist( &yuv, 1, 0, cv::Mat(), hist[0], 1, &h_size, &h_range, true, false );
+        calcHist( &u, 1, 0, cv::Mat(), hist[1], 1, &h_size, &h_range, true, false );
+        calcHist( &v, 1, 0, cv::Mat(), hist[2], 1, &h_size, &h_range, true, false );
+        //cv::Mat hist;
+        //calcHist( &yuv, 1, 0, cv::Mat(), hist, 1, &h_size, &h_range, true, false );
 
         cv::Size bg_size( 256, 128 );
         cv::Mat bg( bg_size.height, bg_size.width, CV_8UC3, cv::Scalar(0 ,0, 0 ) );
-        cv::normalize(hist, hist, 0, bg.rows, cv::NORM_MINMAX, -1, cv::Mat() );
+        //cv::normalize(hist, hist, 0, bg.rows, cv::NORM_MINMAX, -1, cv::Mat() );
 
-        for( size_t i(1); i < hist.rows; ++i )
+        cv::normalize(hist[0], hist[0], 0, bg.rows, cv::NORM_MINMAX, -1, cv::Mat() );
+        cv::normalize(hist[1], hist[1], 0, bg.rows, cv::NORM_MINMAX, -1, cv::Mat() );
+        cv::normalize(hist[2], hist[2], 0, bg.rows, cv::NORM_MINMAX, -1, cv::Mat() );
+
+        for( size_t i(1); i < h_size; ++i )
         {
-            cv::line( bg,
-                      cv::Point( (i - 1), bg.rows - cvRound( hist.at< float>(i - 1) ) ),
-                      cv::Point( i, bg.rows - cvRound( hist.at< float >(i) ) ),
-                      cv::Scalar( 255, 255, 255) );
+            if( (m_test_flags & HistogramFlags::Y_Histogram) ) {
+                cv::line( bg,
+                          cv::Point( (i - 1), bg.rows - cvRound( hist[0].at< float>(i - 1) ) ),
+                          cv::Point( i, bg.rows - cvRound( hist[0].at< float >(i) ) ),
+                          cv::Scalar( 255, 255, 255) );
+            }
+            if( (m_test_flags & HistogramFlags::U_Histogram) ) {
+                cv::line( bg,
+                          cv::Point( (i - 1), bg.rows - cvRound( hist[1].at< float>(i - 1) ) ),
+                          cv::Point( i, bg.rows - cvRound( hist[1].at< float >(i) ) ),
+                          cv::Scalar( 255, 255, 0) );
+            }
+            if( (m_test_flags & HistogramFlags::V_Histogram) ) {
+                cv::line( bg,
+                          cv::Point( (i - 1), bg.rows - cvRound( hist[2].at< float>(i - 1) ) ),
+                          cv::Point( i, bg.rows - cvRound( hist[2].at< float >(i) ) ),
+                          cv::Scalar( 0, 255, 255) );
+            }
         }
         cv::Mat roi1( src, cv::Rect( 0, src.rows - bg_size.height, bg_size.width, bg_size.height ) );
         cv::addWeighted( roi1, 0.35, bg, 0.65, 0.0, roi1 );
