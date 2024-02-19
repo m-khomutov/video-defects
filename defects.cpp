@@ -25,7 +25,7 @@ namespace {
         return (tv.tv_sec * 1000000 + tv.tv_usec) / 1000;
     }
 
-    char const *test_names[Defects::kTestNumber] = {
+    char const *test_names[Defects::Tests::Number] = {
         "  monochrome",
         "  overexposed",
         "  shadowed",
@@ -47,11 +47,11 @@ Defects::Defects( char const *name )
     //int switch_value;
     //cv::createTrackbar( "name", name, &switch_value, 10, nullptr );
 
-    for( size_t i(0); i < kTestNumber; ++i )
+    for( size_t i(0); i < Tests::Number; ++i )
     {
-        m_tests[i] = std::make_pair( test_names[i], false );
+        m_test_info[i] = { test_names[i], (1u << i) };
     }
-    m_tests[0].second = true;
+    m_test_info[0].highlighted = true;
 }
 
 void Defects::run( Reader &r )
@@ -81,11 +81,11 @@ void Defects::run( Reader &r )
                     delta
                   );
 
-        for( size_t i(0); i < kTestNumber; ++i )
+        for( size_t i(0); i < Tests::Number; ++i )
         {
-            int thickness = 1 + m_tests[i].second;
+            int thickness = 1 + m_test_info[i].highlighted;
             cv::putText( frame,
-                         m_tests[i].first.c_str(),
+                         m_test_info[i].name.c_str(),
                          cv::Point(10, (i + 1) * 15),
                          cv::FONT_HERSHEY_PLAIN,
                          1,
@@ -117,74 +117,164 @@ void Defects::run( Reader &r )
 
 void Defects::f_manage_keycode( int code )
 {
-    m_tests[m_highlighted].second = false;
+    m_test_info[m_highlighted].highlighted = false;
+    switch( code )
+    {
+        case 'y':  // Luma histogram
+            f_on_y();
+            break;
+        case 'r':  // Red histogram
+            f_on_r();
+            break;
+        case 'g':  // Green histogram
+            f_on_g();
+            break;
+        case 'b':  // Blue histogram
+            f_on_b();
+            break;
+        case 0x52: // up
+            f_on_up();
+            break;
+        case 0x54: // down
+            f_on_down();
+            break;
+        case 0x51: // left
+            f_on_left();
+            break;
+        case 0x53: // right
+            f_on_right();
+            break;
+        case 0x0d: // enter
+            f_on_enter();
+            break;
+    }
+    m_test_info[m_highlighted].highlighted = true;
+}
 
-    if( code == 'y' ) { // Luma histogram
-        if( (m_test_flags & Tests::Y_Histogram) ) {
-            m_test_flags &= ~Tests::Y_Histogram;
-        }
-        else {
-            m_test_flags |= Tests::Y_Histogram;
-        }
+void Defects::f_on_y()
+{
+    if( (m_test_flags & HistogramFlags::Y_Histogram) ) {
+        m_test_flags &= ~HistogramFlags::Y_Histogram;
     }
-    if( code == 'r' ) { // Red histogram
-        if( (m_test_flags & Tests::R_Histogram) ) {
-            m_test_flags &= ~Tests::R_Histogram;
-        }
-        else {
-            m_test_flags |= Tests::R_Histogram;
-        }
+    else {
+        m_test_flags |= HistogramFlags::Y_Histogram;
     }
-    if( code == 'g' ) { // Green histogram
-        if( (m_test_flags & Tests::G_Histogram) ) {
-            m_test_flags &= ~Tests::G_Histogram;
-        }
-        else {
-            m_test_flags |= Tests::G_Histogram;
-        }
+}
+
+void Defects::f_on_r()
+{
+    if( (m_test_flags & HistogramFlags::R_Histogram) ) {
+        m_test_flags &= ~HistogramFlags::R_Histogram;
     }
-    if( code == 'b' ) { // Blue histogram
-        if( (m_test_flags & Tests::B_Histogram) ) {
-            m_test_flags &= ~Tests::B_Histogram;
-        }
-        else {
-            m_test_flags |= Tests::B_Histogram;
-        }
+    else {
+        m_test_flags |= HistogramFlags::R_Histogram;
     }
-    else if( code == 0x54 ) { //down
-        if( ++m_highlighted == kTestNumber )
-        {
-            m_highlighted = 0;
-        }
+}
+
+void Defects::f_on_g()
+{
+    if( (m_test_flags & HistogramFlags::G_Histogram) ) {
+        m_test_flags &= ~HistogramFlags::G_Histogram;
     }
-    else if( code == 0x52 ) { // up
-        if( --m_highlighted == -1 )
-        {
-            m_highlighted = kTestNumber - 1;
-        }
+    else {
+        m_test_flags |= HistogramFlags::G_Histogram;
     }
-    else if( code == 0x0d ) { //enter
-        if( m_current_test != -1 )
-        {
-            m_tests[m_current_test].first[0] = ' ';
-            if( m_current_test == m_highlighted )
-            {
-                m_current_test = -1;
+}
+
+void Defects::f_on_b()
+{
+    if( (m_test_flags & HistogramFlags::B_Histogram) ) {
+        m_test_flags &= ~HistogramFlags::B_Histogram;
+    }
+    else {
+        m_test_flags |= HistogramFlags::B_Histogram;
+    }
+}
+
+void Defects::f_on_up()
+{
+    if( --m_highlighted == -1 )
+    {
+        m_highlighted = Tests::Number - 1;
+    }
+}
+
+void Defects::f_on_down()
+{
+    if( ++m_highlighted == Tests::Number )
+    {
+        m_highlighted = 0;
+    }
+}
+
+void Defects::f_on_left()
+{
+    switch( m_current_test )
+    {
+        case Tests::Overexposed:
+            if( m_test_info[Tests::Overexposed].alpha > 1.0 ) {
+                m_test_info[Tests::Overexposed].alpha -= 0.1f;
             }
-            else
-            {
-                m_current_test = m_highlighted;
-                m_tests[m_current_test].first[0] = '*';
+            break;
+        case Tests::Shadowed:
+            if( m_test_info[Tests::Shadowed].alpha > 0.0 ) {
+                m_test_info[Tests::Shadowed].alpha -= 0.1f;
             }
+            break;
+        case Tests::Posterize:
+            if( m_test_info[Tests::Posterize].alpha > 1.0 ) {
+                m_test_info[Tests::Posterize].alpha -= 1.0f;
+            }
+            break;
+    }
+}
+
+void Defects::f_on_right()
+{
+    switch( m_current_test ) {
+        case Tests::Overexposed:
+            if( m_test_info[Tests::Overexposed].alpha < 4.0 ) {
+                m_test_info[Tests::Overexposed].alpha += 0.1f;
+            }
+            break;
+        case Tests::Shadowed:
+            if( m_test_info[Tests::Shadowed].alpha < 1.0 ) {
+                m_test_info[Tests::Shadowed].alpha += 0.1f;
+            }
+            break;
+        case Tests::Posterize:
+            if( m_test_info[Tests::Posterize].alpha < 256.0 ) {
+                m_test_info[Tests::Posterize].alpha += 1.0f;
+            }
+            break;
+    }
+}
+
+void Defects::f_on_enter()
+{
+    if( m_current_test != -1 )
+    {
+        m_test_info[m_current_test].name[0] = ' ';
+        if( m_current_test == m_highlighted )
+        {
+            m_test_flags &= ~m_test_info[m_current_test].flag;
+            m_current_test = -1;
         }
         else
         {
+            m_test_flags &= ~m_test_info[m_current_test].flag;
+
             m_current_test = m_highlighted;
-            m_tests[m_current_test].first[0] = '*';
+            m_test_info[m_current_test].name[0] = '*';
+            m_test_flags |= m_test_info[m_current_test].flag;
         }
     }
-
-    m_tests[m_highlighted].second = true;
+    else
+    {
+        m_current_test = m_highlighted;
+        m_test_info[m_current_test].name[0] = '*';
+        m_test_flags |= m_test_info[m_current_test].flag;
+    }
 }
 
 cv::Mat &Defects::f_blur( cv::Mat &src, cv::Size core_size )
@@ -200,10 +290,11 @@ cv::Mat &Defects::f_blur( cv::Mat &src, cv::Size core_size )
     return src;
 }
 
-cv::Mat &Defects::f_posterize( cv::Mat &src, int div )
+cv::Mat &Defects::f_posterize( cv::Mat &src )
 {
-    if( (m_test_flags & Tests::Posterize) )
+    if( (m_test_flags & (1 << Tests::Posterize)) )
     {
+        int div = m_test_info[Tests::Posterize].alpha;
         for( size_t y(0); y < src.rows; ++y )
         {
             uchar *b = src.ptr( y );
@@ -247,14 +338,18 @@ cv::Mat &Defects::f_moveHSV( cv::Mat &src, double alpha, int beta )
 
 cv::Mat &Defects::f_moveLuma( cv::Mat &src )
 {
-    if( (m_test_flags & Tests::Overexposed) || (m_test_flags & Tests::Shadowed) )
+    bool overexposed = (m_test_flags & (1 << Tests::Overexposed));
+    bool shadowed = (m_test_flags & (1 << Tests::Shadowed));
+
+    if( overexposed || shadowed )
     {
         cv::Mat yuv;
         cv::cvtColor( src, yuv, CV_RGB2YUV_I420 );
 
         for( int y(0); y < src.rows; y++ ) {
             for( int x(0); x < src.cols; x++ ) {
-                float luma = yuv.at< uchar >(y, x) * m_alpha;
+                float alpha = overexposed ? m_test_info[Tests::Overexposed].alpha : m_test_info[Tests::Shadowed].alpha;
+                float luma = yuv.at< uchar >(y, x) * alpha;
                 if( luma > 255. ) {
                     luma = 255.;
                 }
@@ -268,21 +363,22 @@ cv::Mat &Defects::f_moveLuma( cv::Mat &src )
 
 cv::Mat &Defects::f_moveChroma( cv::Mat &src )
 {
-    if( (m_test_flags & Tests::LowChroma) )
+    if( (m_test_flags & (1 << Tests::LowChroma)) )
     {
         cv::Mat yuv;
         cv::cvtColor( src, yuv, CV_RGB2YUV_I420 );
 
         int chroma_height = src.rows >> 2;
+        float alpha = m_test_info[Tests::LowChroma].alpha;
         for( int y(0); y < chroma_height; y++ ) {
             for( int x(0); x < src.cols; x++ ) {
-                float u = yuv.at< uchar >(src.rows + y, x) * m_alpha;
+                float u = yuv.at< uchar >(src.rows + y, x) * alpha;
                 if( u > 255. ) {
                     u = 255.;
                 }
                 yuv.at< uchar >(src.rows + y, x) = cv::saturate_cast< uchar >(u);
 
-                float v = yuv.at< uchar >(src.rows + chroma_height + y, x) * m_alpha;
+                float v = yuv.at< uchar >(src.rows + chroma_height + y, x) * alpha;
                 if( v > 255. ) {
                     v = 255.;
                 }
@@ -297,19 +393,20 @@ cv::Mat &Defects::f_moveChroma( cv::Mat &src )
 
 cv::Mat &Defects::f_atvl( cv::Mat &src )
 {
-    if( (m_test_flags & Tests::ATVL) )
+    if( (m_test_flags & (1 << Tests::ATVL)) )
     {
         cv::Mat yuv;
         cv::cvtColor( src, yuv, CV_RGB2YUV_I420 );
 
+        float alpha = m_test_info[Tests::ATVL].alpha;
         for( int y(0); y < src.rows; y++ ) {
             for( int x(0); x < src.cols; x++ ) {
                 float luma = yuv.at< uchar >(y, x);
                 if( luma < 80. ) {
-                    luma = luma / m_alpha;
+                    luma = luma / alpha;
                 }
                 if( luma > 80. ) {
-                    luma = luma * m_alpha;
+                    luma = luma * alpha;
                 }
                 if( luma > 255. ) {
                     luma = 255.;
@@ -322,9 +419,22 @@ cv::Mat &Defects::f_atvl( cv::Mat &src )
     return src;
 }
 
+cv::Mat &Defects::f_grayscale( cv::Mat &src )
+{
+    if( (m_test_flags & (1 << Tests::Monochrome)) )
+    {
+        cv::Mat gray;
+        cv::cvtColor( src, gray, CV_RGB2GRAY );
+
+        std::vector< cv::Mat > planes( 3, gray );
+        cv::merge( planes, src );
+    }
+    return src;
+}
+
 cv::Mat &Defects::f_lumaHistogram( cv::Mat &src )
 {
-    if( (m_test_flags & Tests::Y_Histogram) )
+    if( (m_test_flags & HistogramFlags::Y_Histogram) )
     {
         cv::Mat yuv;
         cv::cvtColor( src, yuv, CV_RGB2YUV_I420 );
@@ -354,7 +464,9 @@ cv::Mat &Defects::f_lumaHistogram( cv::Mat &src )
 }
 cv::Mat &Defects::f_chromaHistogram( cv::Mat &src )
 {
-    if( (m_test_flags & Tests::R_Histogram) || (m_test_flags & Tests::G_Histogram) || (m_test_flags & Tests::B_Histogram))
+    if( (m_test_flags & HistogramFlags::R_Histogram) ||
+        (m_test_flags & HistogramFlags::G_Histogram) ||
+        (m_test_flags & HistogramFlags::B_Histogram))
     {
         std::vector< cv::Mat > planes;
         cv::split( src, planes );
@@ -377,19 +489,19 @@ cv::Mat &Defects::f_chromaHistogram( cv::Mat &src )
 
         for( int i(1); i < h_size; ++i )
         {
-            if( (m_test_flags & Tests::B_Histogram) ) {
+            if( (m_test_flags & HistogramFlags::B_Histogram) ) {
                 line( bg,
                       cv::Point( (i - 1), bg.rows - cvRound(hist[0].at< float >(i - 1)) ),
                       cv::Point( i, bg.rows - cvRound(hist[0].at< float >(i)) ),
                       cv::Scalar( 255, 0, 0) );
             }
-            if( (m_test_flags & Tests::G_Histogram) ) {
+            if( (m_test_flags & HistogramFlags::G_Histogram) ) {
                 line( bg,
                       cv::Point( (i - 1), bg.rows - cvRound(hist[1].at< float >(i - 1)) ),
                       cv::Point( i, bg.rows - cvRound(hist[1].at< float >(i)) ),
                       cv::Scalar( 0, 255, 0) );
             }
-            if( (m_test_flags & Tests::R_Histogram) ) {
+            if( (m_test_flags & HistogramFlags::R_Histogram) ) {
                 line( bg,
                       cv::Point( (i - 1), bg.rows - cvRound(hist[2].at< float >(i - 1)) ),
                       cv::Point( i, bg.rows - cvRound(hist[2].at< float >(i)) ),
@@ -398,19 +510,6 @@ cv::Mat &Defects::f_chromaHistogram( cv::Mat &src )
         }
         cv::Mat roi1( src, cv::Rect( 0, src.rows - bg_size.height, bg_size.width, bg_size.height ) );
         cv::addWeighted( roi1, 0.35, bg, 0.65, 0.0, roi1 );
-    }
-    return src;
-}
-
-cv::Mat &Defects::f_grayscale( cv::Mat &src )
-{
-    if( (m_test_flags & Tests::Monochrome) )
-    {
-        cv::Mat gray;
-        cv::cvtColor( src, gray, CV_RGB2GRAY );
-
-        std::vector< cv::Mat > planes( 3, gray );
-        cv::merge( planes, src );
     }
     return src;
 }
