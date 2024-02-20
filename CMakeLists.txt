@@ -8,6 +8,7 @@ add_executable(videodefects
                main.cpp
                reader.cpp
                encoder.cpp
+               window.cpp
                defects.cpp
                rtsp/socket.cpp
                rtsp/poll.cpp

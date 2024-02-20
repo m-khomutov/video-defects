@@ -3,28 +3,12 @@
 //
 
 #include "defects.h"
-#include "rtsp/service.h"
-#include <signal.h>
-#include <sys/time.h>
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgproc/types_c.h>
 
 namespace {
-    bool running = true;
-    void signal_handler( int s )
-    {
-        running = false;
-    }
-
-    uint64_t now()
-    {
-        struct timeval tv;
-        gettimeofday( &tv, nullptr );
-        return (tv.tv_sec * 1000000 + tv.tv_usec) / 1000;
-    }
-
     char const *test_names[Defects::Tests::Number] = {
         "  monochrome",
         "  overexposed",
@@ -35,16 +19,8 @@ namespace {
     };
 }  // namespace
 
-Defects::Defects( char const *name )
-: m_name( name )
+Defects::Defects()
 {
-    signal( SIGHUP,  signal_handler );
-    signal( SIGTERM, signal_handler );
-    signal( SIGSEGV, signal_handler);
-    signal( SIGINT,  signal_handler);
-
-    cv::namedWindow( name, cv::WINDOW_AUTOSIZE );
-
     for( size_t i(0); i < Tests::Number; ++i )
     {
         m_test_info[i] = { test_names[i], (1u << i) };
@@ -53,154 +29,44 @@ Defects::Defects( char const *name )
 }
 
 Defects::~Defects()
+{}
+
+cv::Mat Defects::convert( cv::Mat &frame )
 {
-    cv::destroyAllWindows();
+    return f_grayscale(
+               f_moveLuma(
+                   f_moveChroma(
+                       f_atvl(
+                           f_posterize( frame )
+                       )
+                   )
+               )
+           );
 }
 
-void Defects::run( Reader &r )
+cv::Mat &Defects::testList( cv::Mat &frame )
 {
-    std::unique_ptr< rtsp::Service > srv( new rtsp::Service( 5555, r.fps() ) );
-
-    cv::Mat frame;
-
-    int delta = 0;
-    while( running ) {
-        r.read( frame, &delta );
-        if( frame.empty() ) {
-            r.reopen();
-            continue;
-        }
-        uint64_t ts = now();
-
-        srv->store( f_grayscale(
-                        f_moveLuma(
-                            f_moveChroma(
-                                f_atvl(
-                                    f_posterize( frame )
-                                )
-                            )
-                        )
-                    ).clone(),
-                    delta
-                  );
-
-        for( size_t i(0); i < Tests::Number; ++i )
-        {
-            int thickness = 1 + m_test_info[i].highlighted;
-            cv::putText( frame,
-                         m_test_info[i].name.c_str(),
-                         cv::Point(10, (i + 1) * 15),
-                         cv::FONT_HERSHEY_PLAIN,
-                         1,
-                         cv::Scalar(0,0,255),
-                         thickness,
-                         false );
-        }
-
-        cv::imshow( m_name.c_str(),
-                    f_lumaHistogram(
-                        f_chromaHistogram( frame )
-                    )
-                  );
-
-        int passed = 0;
-        do {
-            passed = now() - ts;
-            if( delta > passed ) {
-                int code;
-                if( (code = cv::waitKey( delta - passed )) != -1 )
-                {
-                    f_manage_keycode( code );
-                }
-            }
-        }
-        while( delta > passed );
-    }
-}
-
-void Defects::f_manage_keycode( int code )
-{
-    m_test_info[m_highlighted].highlighted = false;
-    switch( code )
+    for( size_t i(0); i < Tests::Number; ++i )
     {
-        case 'y':  // Luma histogram
-            f_on_y();
-            break;
-        case 'u':  // Chroma U (Cb) histogram
-            f_on_u();
-            break;
-        case 'v':  // CHroma V (Cr) histogram
-            f_on_v();
-            break;
-        case 'r':  // Red histogram
-            f_on_r();
-            break;
-        case 'g':  // Green histogram
-            f_on_g();
-            break;
-        case 'b':  // Blue histogram
-            f_on_b();
-            break;
-        case 0x52: // up
-            f_on_up();
-            break;
-        case 0x54: // down
-            f_on_down();
-            break;
-        case 0x51: // left
-            f_on_left();
-            break;
-        case 0x53: // right
-            f_on_right();
-            break;
-        case 0x0d: // enter
-            f_on_enter();
-            break;
+        int thickness = 1 + m_test_info[i].highlighted;
+        cv::putText( frame,
+                     m_test_info[i].name.c_str(),
+                     cv::Point(10, (i + 1) * 15),
+                     cv::FONT_HERSHEY_PLAIN,
+                     1,
+                     cv::Scalar(0,0,255),
+                     thickness,
+                     false );
     }
-    m_test_info[m_highlighted].highlighted = true;
+    return frame;
 }
 
-void Defects::f_on_y()
+cv::Mat &Defects::histogram( cv::Mat &frame )
 {
-    f_manage_histogram( HistogramFlags::Y_Histogram );
+    return f_lumaHistogram( f_chromaHistogram( frame ) );
 }
 
-void Defects::f_on_u()
-{
-    f_manage_histogram( HistogramFlags::U_Histogram );
-}
-
-void Defects::f_on_v()
-{
-    f_manage_histogram( HistogramFlags::V_Histogram );
-}
-
-void Defects::f_on_r()
-{
-    f_manage_histogram( HistogramFlags::R_Histogram );
-}
-
-void Defects::f_on_g()
-{
-    f_manage_histogram( HistogramFlags::G_Histogram );
-}
-
-void Defects::f_on_b()
-{
-    f_manage_histogram( HistogramFlags::B_Histogram );
-}
-
-void Defects::f_manage_histogram( uint32_t flag )
-{
-    if( (m_test_flags & flag) ) {
-        m_test_flags &= ~flag;
-    }
-    else {
-        m_test_flags |= flag;
-    }
-}
-
-void Defects::f_on_up()
+void Defects::Up()
 {
     if( --m_highlighted == -1 )
     {
@@ -208,7 +74,7 @@ void Defects::f_on_up()
     }
 }
 
-void Defects::f_on_down()
+void Defects::Down()
 {
     if( ++m_highlighted == Tests::Number )
     {
@@ -216,7 +82,7 @@ void Defects::f_on_down()
     }
 }
 
-void Defects::f_on_left()
+void Defects::Left()
 {
     switch( m_current_test )
     {
@@ -238,7 +104,7 @@ void Defects::f_on_left()
     }
 }
 
-void Defects::f_on_right()
+void Defects::Right()
 {
     switch( m_current_test ) {
         case Tests::Overexposed:
@@ -259,7 +125,7 @@ void Defects::f_on_right()
     }
 }
 
-void Defects::f_on_enter()
+void Defects::Enter()
 {
     if( m_current_test != -1 )
     {
@@ -283,6 +149,21 @@ void Defects::f_on_enter()
         m_current_test = m_highlighted;
         m_test_info[m_current_test].name[0] = '*';
         m_test_flags |= m_test_info[m_current_test].flag;
+    }
+}
+
+void Defects::highlight( bool on )
+{
+    m_test_info[m_highlighted].highlighted = on;
+}
+
+void Defects::f_manage_histogram( uint32_t flag )
+{
+    if( (m_test_flags & flag) ) {
+        m_test_flags &= ~flag;
+    }
+    else {
+        m_test_flags |= flag;
     }
 }
 
@@ -458,12 +339,9 @@ cv::Mat &Defects::f_lumaHistogram( cv::Mat &src )
         calcHist( &yuv, 1, 0, cv::Mat(), hist[0], 1, &h_size, &h_range, true, false );
         calcHist( &u, 1, 0, cv::Mat(), hist[1], 1, &h_size, &h_range, true, false );
         calcHist( &v, 1, 0, cv::Mat(), hist[2], 1, &h_size, &h_range, true, false );
-        //cv::Mat hist;
-        //calcHist( &yuv, 1, 0, cv::Mat(), hist, 1, &h_size, &h_range, true, false );
 
         cv::Size bg_size( 256, 128 );
         cv::Mat bg( bg_size.height, bg_size.width, CV_8UC3, cv::Scalar(0 ,0, 0 ) );
-        //cv::normalize(hist, hist, 0, bg.rows, cv::NORM_MINMAX, -1, cv::Mat() );
 
         cv::normalize(hist[0], hist[0], 0, bg.rows, cv::NORM_MINMAX, -1, cv::Mat() );
         cv::normalize(hist[1], hist[1], 0, bg.rows, cv::NORM_MINMAX, -1, cv::Mat() );

@@ -1,5 +1,5 @@
 #include "reader.h"
-#include "defects.h"
+#include "window.h"
 #include <getopt.h>
 #include <iostream>
 
@@ -75,7 +75,7 @@ int main( int argc, char *argv[]) {
             r.open( src );
         }
 
-        Defects( src ).run( r );
+        Window( src ).run( r );
     }
     catch( const std::exception & e ) {
         std::cerr << e.what() << std::endl;

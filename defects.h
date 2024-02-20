@@ -5,7 +5,6 @@
 #ifndef VIDEOTESTS_DEFECTS_H
 #define VIDEOTESTS_DEFECTS_H
 
-#include "reader.h"
 #include <opencv2/core/mat.hpp>
 #include <string>
 
@@ -13,10 +12,44 @@ class Defects {
 public:
     enum Tests { Monochrome, Overexposed, Shadowed, LowChroma, ATVL, Posterize, Number };
 
-    Defects( char const *name );
+    Defects();
     ~Defects();
 
-    void run( Reader &r );
+    cv::Mat convert( cv::Mat &frame );
+    cv::Mat &testList( cv::Mat &frame );
+    cv::Mat &histogram( cv::Mat &frame );
+
+    void Y()
+    {
+        f_manage_histogram( HistogramFlags::Y_Histogram );
+    }
+    void U()
+    {
+        f_manage_histogram( HistogramFlags::U_Histogram );
+    }
+    void V()
+    {
+        f_manage_histogram( HistogramFlags::V_Histogram );
+    }
+    void R()
+    {
+        f_manage_histogram( HistogramFlags::R_Histogram );
+    }
+    void G()
+    {
+        f_manage_histogram( HistogramFlags::G_Histogram );
+    }
+    void B()
+    {
+        f_manage_histogram( HistogramFlags::B_Histogram );
+    }
+    void Up();
+    void Down();
+    void Left();
+    void Right();
+    void Enter();
+
+    void highlight( bool on );
 
 private:
     enum HistogramFlags { Y_Histogram = 64,
@@ -25,6 +58,8 @@ private:
                           R_Histogram = 512,
                           G_Histogram = 1024,
                           B_Histogram = 2048 };
+
+    void f_manage_histogram( uint32_t flag );
 
     cv::Mat &f_blur( cv::Mat &src, cv::Size core_size );
     cv::Mat &f_atvl( cv::Mat &src );
@@ -35,20 +70,6 @@ private:
     cv::Mat &f_lumaHistogram( cv::Mat &src );
     cv::Mat &f_chromaHistogram( cv::Mat &src );
     cv::Mat &f_grayscale( cv::Mat &src );
-
-    void f_manage_keycode( int code );
-    void f_manage_histogram( uint32_t flag );
-    void f_on_y();
-    void f_on_u();
-    void f_on_v();
-    void f_on_r();
-    void f_on_g();
-    void f_on_b();
-    void f_on_up();
-    void f_on_down();
-    void f_on_left();
-    void f_on_right();
-    void f_on_enter();
 
 private:
     struct TestInfo
@@ -62,7 +83,6 @@ private:
         TestInfo( const char *n, uint32_t f ): name( n ), flag( f )
         {}
     };
-    std::string m_name;
 
     TestInfo m_test_info[Tests::Number];
     int m_current_test {-1};
