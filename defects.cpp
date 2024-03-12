@@ -15,7 +15,8 @@ namespace {
         "  shadowed",
         "  low chroma",
         "  atvl",
-        "  posterize"
+        "  posterize",
+        "  noise"
     };
 }  // namespace
 
@@ -37,7 +38,9 @@ cv::Mat Defects::convert( cv::Mat &frame )
                f_moveLuma(
                    f_moveChroma(
                        f_atvl(
-                           f_posterize( frame )
+                           f_posterize(
+                               f_noise(  frame )
+                           )
                        )
                    )
                )
@@ -101,6 +104,10 @@ void Defects::Left()
                 m_test_info[Tests::Posterize].alpha -= 1.0f;
             }
             break;
+        case Tests::Noise:
+            if( m_test_info[Tests::Noise].alpha > .0 ) {
+                m_test_info[Tests::Noise].alpha -= 1.0f;
+            }
     }
 }
 
@@ -120,6 +127,11 @@ void Defects::Right()
         case Tests::Posterize:
             if( m_test_info[Tests::Posterize].alpha < 256.0 ) {
                 m_test_info[Tests::Posterize].alpha += 1.0f;
+            }
+            break;
+        case Tests::Noise:
+            if( m_test_info[Tests::Noise].alpha < 256.0 ) {
+                m_test_info[Tests::Noise].alpha += 1.0f;
             }
             break;
     }
@@ -320,6 +332,39 @@ cv::Mat &Defects::f_grayscale( cv::Mat &src )
         cv::merge( planes, src );
     }
     return src;
+}
+
+cv::Mat &Defects::f_noise( cv::Mat &src )
+{
+    if( (m_test_flags & (1 << Tests::Noise)) )
+    {
+        cv::Mat gaussian_noise = cv::Mat(src.size(),CV_8UC3);
+        cv::randn( gaussian_noise, 0, m_test_info[Tests::Noise].alpha );
+        src += gaussian_noise;
+        cv::normalize( src, src, 0, 255, CV_MINMAX, CV_8UC3 );
+    }
+    return src;
+}
+
+double Defects::f_peak_sn( cv::Mat &src )
+{
+    cv::Mat blurred = src.clone();
+    f_blur( blurred, cv::Size( 3, 3) );
+
+    cv::Mat diff;
+    cv::absdiff( src, blurred, diff );
+    diff.convertTo( diff, CV_32F );
+    diff = diff.mul( diff );
+
+    cv::Scalar s = cv::sum( diff );
+    double sse = s.val[0] + s.val[1] + s.val[2];
+    if( sse <= 1e-10 ) // for small values return zero
+    {
+        return 0.;
+    }
+
+    double mse = sse /(double)(src.channels() * src.total());
+    return 10.0 * log10( (255 * 255) / mse );
 }
 
 cv::Mat &Defects::f_lumaHistogram( cv::Mat &src )
