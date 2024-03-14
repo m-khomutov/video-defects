@@ -34,6 +34,8 @@ Defects::~Defects()
 
 cv::Mat Defects::convert( cv::Mat &frame )
 {
+    m_test_result.clear();
+
     return f_grayscale(
                f_moveLuma(
                    f_moveChroma(
@@ -67,6 +69,20 @@ cv::Mat &Defects::testList( cv::Mat &frame )
 cv::Mat &Defects::histogram( cv::Mat &frame )
 {
     return f_lumaHistogram( f_chromaHistogram( frame ) );
+}
+
+cv::Mat &Defects::result( cv::Mat &frame )
+{
+    cv::putText( frame,
+                 m_test_result.c_str(),
+                 cv::Point((frame.cols - 100) / 2, 15),
+                 cv::FONT_HERSHEY_PLAIN,
+                 1,
+                 cv::Scalar(0,0,255),
+                 1,
+                 false );
+
+    return frame;
 }
 
 void Defects::Up()
@@ -338,21 +354,29 @@ cv::Mat &Defects::f_noise( cv::Mat &src )
 {
     if( (m_test_flags & (1 << Tests::Noise)) )
     {
+        cv::Mat noiseless = src.clone();
         cv::Mat gaussian_noise = cv::Mat(src.size(),CV_8UC3);
-        cv::randn( gaussian_noise, 0, m_test_info[Tests::Noise].alpha );
+
+        cv::randn( gaussian_noise, 0, m_test_info[Tests::Noise].alpha - 1.0 );
         src += gaussian_noise;
         cv::normalize( src, src, 0, 255, CV_MINMAX, CV_8UC3 );
+        float psn = f_peak_sn( noiseless, src );
+        if( psn > 0.f )
+        {
+            m_test_info[Tests::Noise].result = psn;
+        }
+        m_test_result = std::string(" PSN=") + std::to_string( m_test_info[Tests::Noise].result );
     }
     return src;
 }
 
-double Defects::f_peak_sn( cv::Mat &src )
+double Defects::f_peak_sn( cv::Mat &src, cv::Mat &noised )
 {
-    cv::Mat blurred = src.clone();
-    f_blur( blurred, cv::Size( 3, 3) );
+    //cv::Mat blurred = src.clone();
+    //f_blur( blurred, cv::Size( 3, 3) );
 
     cv::Mat diff;
-    cv::absdiff( src, blurred, diff );
+    cv::absdiff( src, noised, diff );
     diff.convertTo( diff, CV_32F );
     diff = diff.mul( diff );
 

@@ -18,6 +18,7 @@ public:
     cv::Mat convert( cv::Mat &frame );
     cv::Mat &testList( cv::Mat &frame );
     cv::Mat &histogram( cv::Mat &frame );
+    cv::Mat &result( cv::Mat &frame );
 
     void Y()
     {
@@ -71,7 +72,7 @@ private:
     cv::Mat &f_chromaHistogram( cv::Mat &src );
     cv::Mat &f_grayscale( cv::Mat &src );
     cv::Mat &f_noise( cv::Mat &src );
-    double f_peak_sn( cv::Mat &src );
+    double f_peak_sn( cv::Mat &src, cv::Mat &noised );
 
 private:
     struct TestInfo
@@ -80,6 +81,7 @@ private:
         uint32_t flag;
         bool highlighted {false};
         float alpha = 1.0f;
+        float result = 0.f;
 
         TestInfo() = default;
         TestInfo( const char *n, uint32_t f ): name( n ), flag( f )
@@ -90,6 +92,7 @@ private:
     int m_current_test {-1};
     int m_highlighted {0};
     uint32_t m_test_flags {0u};
+    std::string m_test_result;
 };
 
 

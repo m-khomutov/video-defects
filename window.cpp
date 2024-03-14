@@ -56,7 +56,7 @@ void Window::run( Reader &r )
 
         srv->store( m_defects.convert( frame ).clone(), delta );
 
-        cv::imshow( m_name.c_str(), m_defects.testList( m_defects.histogram( frame ) ) );
+        cv::imshow( m_name.c_str(), m_defects.testList( m_defects.histogram( m_defects.result( frame ) ) ) );
 
         int passed = 0;
         do {
