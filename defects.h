@@ -10,7 +10,7 @@
 
 class Defects {
 public:
-    enum Tests { Monochrome, Overexposed, Shadowed, LowChroma, ATVL, Posterize, Noise, Number };
+    enum Tests { Monochrome, Overexposed, Shadowed, LowChroma, ATVL, Posterize, Noise, Equalize, Number };
 
     Defects();
     ~Defects();
@@ -53,12 +53,12 @@ public:
     void highlight( bool on );
 
 private:
-    enum HistogramFlags { Y_Histogram = 128,
-                          U_Histogram = 256,
-                          V_Histogram = 512,
-                          R_Histogram = 1024,
-                          G_Histogram = 2048,
-                          B_Histogram = 4096 };
+    enum HistogramFlags { Y_Histogram = 0x0100,
+                          U_Histogram = 0x0200,
+                          V_Histogram = 0x0400,
+                          R_Histogram = 0x0800,
+                          G_Histogram = 0x1000,
+                          B_Histogram = 0x2000 };
 
     void f_manage_histogram( uint32_t flag );
 
@@ -72,6 +72,8 @@ private:
     cv::Mat &f_chromaHistogram( cv::Mat &src );
     cv::Mat &f_grayscale( cv::Mat &src );
     cv::Mat &f_noise( cv::Mat &src );
+    cv::Mat &f_equalize( cv::Mat &src );
+
     double f_peak_sn( cv::Mat &src, cv::Mat &noised );
 
 private:

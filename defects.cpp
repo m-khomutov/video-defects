@@ -7,6 +7,7 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgproc/types_c.h>
+#include <iostream>
 
 namespace {
     char const *test_names[Defects::Tests::Number] = {
@@ -16,8 +17,14 @@ namespace {
         "  low chroma",
         "  atvl",
         "  posterize",
-        "  noise"
+        "  noise",
+        "  equalize"
     };
+
+    uchar clip( float val, uchar min_val, uchar max_val )
+    {
+        return val <= min_val ? min_val : (val >= max_val ? max_val : uchar(val));
+    }
 }  // namespace
 
 Defects::Defects()
@@ -41,7 +48,9 @@ cv::Mat Defects::convert( cv::Mat &frame )
                    f_moveChroma(
                        f_atvl(
                            f_posterize(
-                               f_noise(  frame )
+                               f_noise(
+                                   f_equalize( frame )
+                               )
                            )
                        )
                    )
@@ -106,18 +115,23 @@ void Defects::Left()
     switch( m_current_test )
     {
         case Tests::Overexposed:
-            if( m_test_info[Tests::Overexposed].alpha > 1.0 ) {
-                m_test_info[Tests::Overexposed].alpha -= 0.1f;
+            if( m_test_info[Tests::Overexposed].alpha > 1.f ) {
+                m_test_info[Tests::Overexposed].alpha -= 0.01f;
             }
             break;
         case Tests::Shadowed:
-            if( m_test_info[Tests::Shadowed].alpha > 0.0 ) {
-                m_test_info[Tests::Shadowed].alpha -= 0.1f;
+            if( m_test_info[Tests::Shadowed].alpha > 0.0f ) {
+                m_test_info[Tests::Shadowed].alpha -= 0.01f;
             }
             break;
         case Tests::Posterize:
-            if( m_test_info[Tests::Posterize].alpha > 1.0 ) {
+            if( m_test_info[Tests::Posterize].alpha > 1.0f ) {
                 m_test_info[Tests::Posterize].alpha -= 1.0f;
+            }
+            break;
+        case Tests::ATVL:
+            if( m_test_info[Tests::ATVL].alpha > 0.01f ) {
+                m_test_info[Tests::ATVL].alpha -= 0.01f;
             }
             break;
         case Tests::Noise:
@@ -131,18 +145,23 @@ void Defects::Right()
 {
     switch( m_current_test ) {
         case Tests::Overexposed:
-            if( m_test_info[Tests::Overexposed].alpha < 4.0 ) {
-                m_test_info[Tests::Overexposed].alpha += 0.1f;
+            if( m_test_info[Tests::Overexposed].alpha < 10.0 ) {
+                m_test_info[Tests::Overexposed].alpha += 0.01f;
             }
             break;
         case Tests::Shadowed:
             if( m_test_info[Tests::Shadowed].alpha < 1.0 ) {
-                m_test_info[Tests::Shadowed].alpha += 0.1f;
+                m_test_info[Tests::Shadowed].alpha += 0.01f;
             }
             break;
         case Tests::Posterize:
             if( m_test_info[Tests::Posterize].alpha < 256.0 ) {
                 m_test_info[Tests::Posterize].alpha += 1.0f;
+            }
+            break;
+        case Tests::ATVL:
+            if( m_test_info[Tests::ATVL].alpha < 2.0 ) {
+                m_test_info[Tests::ATVL].alpha += 0.01f;
             }
             break;
         case Tests::Noise:
@@ -267,7 +286,7 @@ cv::Mat &Defects::f_moveLuma( cv::Mat &src )
         for( int y(0); y < src.rows; y++ ) {
             for( int x(0); x < src.cols; x++ ) {
                 float alpha = overexposed ? m_test_info[Tests::Overexposed].alpha : m_test_info[Tests::Shadowed].alpha;
-                float luma = yuv.at< uchar >(y, x) * alpha;
+                float luma = pow(yuv.at< uchar >(y, x), alpha);
                 if( luma > 255. ) {
                     luma = 255.;
                 }
@@ -316,23 +335,35 @@ cv::Mat &Defects::f_atvl( cv::Mat &src )
         cv::Mat yuv;
         cv::cvtColor( src, yuv, CV_RGB2YUV_I420 );
 
+        double mean = 0.;
         float alpha = m_test_info[Tests::ATVL].alpha;
         for( int y(0); y < src.rows; y++ ) {
             for( int x(0); x < src.cols; x++ ) {
                 float luma = yuv.at< uchar >(y, x);
-                if( luma < 80. ) {
-                    luma = luma / alpha;
+                if( luma < 127. ) {
+                    luma = clip( luma / alpha, 0, 127 );
                 }
-                if( luma > 80. ) {
-                    luma = luma * alpha;
-                }
-                if( luma > 255. ) {
-                    luma = 255.;
+                if( luma > 127. ) {
+                    luma = clip( luma * alpha, 127, 255 );
                 }
                 yuv.at< uchar >(y, x) = cv::saturate_cast< uchar >(luma);
+                mean += luma;
             }
         }
         cv::cvtColor( yuv, src, CV_YUV2RGB_I420 );
+
+        uchar u_mean = cv::saturate_cast< uchar >(mean / double(src.rows * src.cols));
+        double variance = 0.f;
+        for( int y(0); y < src.rows; y++ ) {
+            for( int x(0); x < src.cols; x++ ) {
+                int8_t delta = (yuv.at< uchar >(y, x) - u_mean);
+                variance += delta * delta;
+            }
+        }
+        variance = variance / double(src.rows * src.cols);
+
+        m_test_info[Tests::ATVL].result = sqrt(variance);
+        m_test_result = std::string(" DEV=") + std::to_string( m_test_info[Tests::ATVL].result );
     }
     return src;
 }
@@ -366,6 +397,43 @@ cv::Mat &Defects::f_noise( cv::Mat &src )
             m_test_info[Tests::Noise].result = psn;
         }
         m_test_result = std::string(" PSN=") + std::to_string( m_test_info[Tests::Noise].result );
+    }
+    return src;
+}
+
+cv::Mat &Defects::f_equalize( cv::Mat &src )
+{
+    if( (m_test_flags & (1 << Tests::Equalize)) )
+    {
+        cv::Mat gray;
+        cv::cvtColor( src, gray, CV_RGB2GRAY );
+
+        float r_hist[256] = { 0.f };
+        for( int y(0); y < gray.rows; y++ ) {
+            for( int x(0); x < gray.cols; x++ ) {
+                r_hist[gray.data[y * gray.cols + x]] += 1.f;
+            }
+        }
+
+        float coef = 255.f / float(gray.total());
+        uchar equ_hist[256] = { 0 };
+        for( size_t i(0); i < 256; ++i ) {
+            float s = 0.f;
+            for( size_t ii(0); ii <= i; ++ii ) {
+                s += r_hist[ii];
+            }
+            equ_hist[i] = uchar(s * coef);
+        }
+
+        for( int y(0); y < gray.rows; ++y ) {
+            for( int x(0); x < gray.cols; ++x ) {
+                uchar luma = gray.data[y * gray.cols + x];
+                gray.data[y * gray.cols + x] = equ_hist[luma];
+            }
+        }
+
+        std::vector< cv::Mat > planes( 3, gray );
+        cv::merge( planes, src );
     }
     return src;
 }
