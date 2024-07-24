@@ -7,7 +7,7 @@ namespace
 {
     void show_api_keys_and_exit( const char *prog, int rc )
     {
-        std::cerr << "Клавиши управления " << prog <<  ": y, u, v, r, g, b, left, right, up, down, enter\n\n";
+        std::cerr << "Клавиши управления " << prog <<  ": y, u, v, r, g, b, left, right, up, down, enter (повторное нажатие - отмена управления)\n\n";
         std::cerr << "Клавиши управления выводом гистограммы:\n";
         std::cerr << "\ty\tYUV схема. Вывод яркости Y\n";
         std::cerr << "\tu\tYUV схема. Вывод цветности U (Cb)\n";
