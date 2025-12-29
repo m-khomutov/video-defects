@@ -74,6 +74,8 @@ private:
     cv::Mat &f_noise( cv::Mat &src );
     cv::Mat &f_equalize( cv::Mat &src );
 
+    cv::Mat &f_draw_datetime( cv::Mat &src );
+
     double f_peak_sn( cv::Mat &src, cv::Mat &noised );
 
 private:

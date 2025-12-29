@@ -49,7 +49,9 @@ cv::Mat Defects::convert( cv::Mat &frame )
                        f_atvl(
                            f_posterize(
                                f_noise(
-                                   f_equalize( frame )
+                                   f_equalize(
+                                       f_draw_datetime( frame )
+                                   )
                                )
                            )
                        )
@@ -435,6 +437,23 @@ cv::Mat &Defects::f_equalize( cv::Mat &src )
         std::vector< cv::Mat > planes( 3, gray );
         cv::merge( planes, src );
     }
+    return src;
+}
+
+cv::Mat &Defects::f_draw_datetime( cv::Mat &src )
+{
+    time_t t = ::time( nullptr );
+    tm *tp = localtime( &t );
+    char buf[128];
+    strftime( buf, sizeof(buf), "%Y/%m/%d %H:%M:%S", tp );
+    cv::putText( src,
+                 buf,
+                 cv::Point(src.cols - 200, 15),
+                 cv::FONT_HERSHEY_PLAIN,
+                 1,
+                 cv::Scalar(255,255,255),
+                 2,
+                 false );
     return src;
 }
 

@@ -194,7 +194,7 @@ std::string rtsp::Connection::f_ctime()
     struct tm * tp = gmtime( &t );
     //Sun, 11 Feb 2024 08:54:05 GMT
     sprintf( buf, "%s, %02u %s %u %02u:%02u:%02u GMT\r\n",
-             week[tp->tm_wday], tp->tm_mday, month[tp->tm_mon], tp->tm_yday + 1982, tp->tm_hour, tp->tm_min, tp->tm_sec );
+             week[tp->tm_wday], tp->tm_mday, month[tp->tm_mon], tp->tm_year + 1900, tp->tm_hour, tp->tm_min, tp->tm_sec );
 
     return buf;
 }
